@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ai Healthy 🫀🫁</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family:'Poppins',sans-serif; margin:0; padding:0; background:linear-gradient(135deg,#0f2027,#203a43,#2c5364); display:flex; flex-direction:column; align-items:center; min-height:100vh; color:#fff;}
+  h1 { margin-top:20px; font-size:2.5em; text-shadow:2px 2px 5px #000; text-align:center;}
+  p { font-size:1.2em; margin:10px 0 20px 0; text-align:center; }
+  button { padding:20px 50px; font-size:1.4em; background:linear-gradient(45deg,#ff6b81,#ff4757); border:none; border-radius:20px; cursor:pointer; color:#fff; font-weight:700; box-shadow:3px 3px 15px rgba(0,0,0,0.5); transition:0.3s; margin-bottom:20px;}
+  button:hover { transform: scale(1.05);}
+  #videoContainer { position: relative; width:300px; height:400px; margin-bottom:20px;}
+  video { width:100%; height:100%; border-radius:20px; border:3px solid #fff; box-shadow:3px 3px 15px rgba(0,0,0,0.6);}
+  #fingerGuide { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:120px; height:120px; border:3px dashed #ffeb3b; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1em; color:#ffeb3b; text-align:center; font-weight:bold;}
+  canvas { width:300px; height:120px; border-radius:15px; background:rgba(255,255,255,0.1); margin-bottom:20px;}
+  .card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius:20px; padding:20px 30px; width:300px; margin:10px 0; box-shadow:3px 3px 15px rgba(0,0,0,0.5); text-align:center; transition:0.3s;}
+  .card h2 { font-size:2em; margin:0; color:#fff; }
+  .card p { margin:5px 0 0 0; font-size:1em; color:#f0f0f0; }
+  #status { font-size:1.2em; margin-top:10px; font-weight:bold; color:#ffeb3b; text-shadow:1px 1px 3px #000;}
+  #heart { width:100px; height:100px; margin:20px auto; fill:red; transform-origin:center center; transition: fill 0.3s;}
+  #historyContainer { width:90%; max-width:400px; margin-top:20px; background:rgba(255,255,255,0.1); padding:15px; border-radius:15px; backdrop-filter:blur(10px); box-shadow:3px 3px 15px rgba(0,0,0,0.5); max-height:300px; overflow-y:auto;}
+  #historyContainer h3 { margin:0 0 10px 0; text-align:center; }
+  #historyList { list-style:none; padding:0; margin:0; font-size:0.9em; color:#fff; }
+  #historyList li { margin-bottom:5px; padding:5px; border-bottom:1px solid rgba(255,255,255,0.2);}
+</style>
+</head>
+<body>
+
+<h1>Ai Healthy 🫀🫁</h1>
+<p>سيصدر صوت عند وضع الإصبع على الكاميرا، وحافظ على ثبات يدك لقياس أدق</p>
+<button id="startBtn">اضغط هنا لبدء الفحص</button>
+
+<div id="videoContainer">
+  <video id="video" autoplay playsinline></video>
+  <div id="fingerGuide">ضع إصبعك هنا</div>
+</div>
+
+<svg id="heart" viewBox="0 0 32 29.6">
+  <path d="M23.6,0c-2.9,0-5.6,1.5-7.6,3.9C13.9,1.5,11.2,0,8.3,0C3.7,0,0,3.7,0,8.3c0,10.5,16,21.3,16,21.3s16-10.8,16-21.3 C32,3.7,28.3,0,23.6,0z"/>
+</svg>
+
+<canvas id="canvas"></canvas>
+
+<div class="card">
+  <h2 id="bpm">-- BPM</h2>
+  <p>نبض القلب</p>
+</div>
+
+<div class="card">
+  <h2 id="rr">-- نفس/دقيقة</h2>
+  <p>معدل التنفس</p>
+</div>
+
+<div class="card">
+  <h2 id="hrv">-- ms</h2>
+  <p>HRV تقديري</p>
+</div>
+
+<div id="status">وضع الإصبع الصحيح</div>
+
+<div id="historyContainer">
+  <h3>دفتر القياسات الكامل</h3>
+  <ul id="historyList"></ul>
+</div>
+
+<audio id="beep" src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" preload="auto"></audio>
+<audio id="alert" src="https://www.soundjay.com/buttons/sounds/beep-05.mp3" preload="auto"></audio>
+
+<script>
+const video=document.getElementById('video');
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const startBtn=document.getElementById('startBtn');
+const bpmDisplay=document.getElementById('bpm');
+const rrDisplay=document.getElementById('rr');
+const hrvDisplay=document.getElementById('hrv');
+const statusDisplay=document.getElementById('status');
+const beep=document.getElementById('beep');
+const alertSound=document.getElementById('alert');
+const heart=document.getElementById('heart');
+const fingerGuide=document.getElementById('fingerGuide');
+const historyList=document.getElementById('historyList');
+
+let signal=[]; let measuring=false; let track;
+let dailyHistory=[];
+
+function smoothSignal(data, windowSize=5){
+  const smoothed=[];
+  for(let i=0;i<data.length;i++){
+    const start=Math.max(0,i-windowSize);
+    const end=Math.min(data.length-1,i+windowSize);
+    const sum=data.slice(start,end+1).reduce((a,b)=>a+b,0);
+    smoothed.push(sum/(end-start+1));
+  }
+  return smoothed;
+}
+
+async function startMeasurement(){
+  signal=[]; measuring=true;
+  bpmDisplay.textContent="-- BPM"; rrDisplay.textContent="-- نفس/دقيقة"; hrvDisplay.textContent="-- ms";
+  statusDisplay.textContent="وضع الإصبع الصحيح"; beep.play();
+  fingerGuide.style.display="flex";
+
+  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+  video.srcObject=stream; track=stream.getVideoTracks()[0];
+
+  try{ await track.applyConstraints({advanced:[{torch:true}]}); }
+  catch(e){ console.log("الفلاش غير مدعوم."); }
+
+  const duration=15*1000; const startTime=Date.now();
+
+  function measure(){
+    if(!measuring) return;
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    const frame=ctx.getImageData(0,0,canvas.width,canvas.height);
+    let r=0;
+    for(let i=0;i<frame.data.length;i+=4) r+=frame.data[i];
+    r=r/(frame.data.length/4);
+    signal.push(r);
+
+    if(signal.length>5){
+      const diff=Math.max(...signal.slice(-5)) - Math.min(...signal.slice(-5));
+      if(diff>15){ statusDisplay.textContent="حرك الإصبع بثبات!"; alertSound.play(); }
+      else { statusDisplay.textContent="وضع الإصبع جيد"; beep.play(); }
+    }
+
+    const smooth=smoothSignal(signal);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.beginPath();
+    smooth.forEach((val,idx)=>{
+      const x=idx;
+      const y=canvas.height/2 - ((val-Math.min(...smooth))/(Math.max(...smooth)-Math.min(...smooth))-0.5)*canvas.height;
+      if(idx===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle='#ff6b81'; ctx.lineWidth=3; ctx.stroke();
+
+    if(Date.now()-startTime<duration) requestAnimationFrame(measure);
+    else{ measuring=false; if(track) track.stop(); fingerGuide.style.display="none"; calculateResults(smooth);}
+  }
+  measure();
+}
+
+function calculateResults(data){
+  let peaks=0;
+  for(let i=1;i<data.length-1;i++){
+    if(data[i]>data[i-1] && data[i]>data[i+1]) peaks++;
+  }
+  const bpm=(peaks*60)/15;
+  bpmDisplay.textContent=`${bpm.toFixed(1)} BPM`;
+  const rr=bpm/4; rrDisplay.textContent=`${rr.toFixed(1)} نفس/دقيقة`;
+
+  let diffs=[]; for(let i=1;i<data.length;i++) diffs.push(Math.abs(data[i]-data[i-1]));
+  const hrv=Math.max(...diffs)-Math.min(...diffs); hrvDisplay.textContent=`${hrv.toFixed(1)} ms`;
+
+  if(bpm<50){ statusDisplay.textContent="نبض منخفض! ضع يدك بثبات"; heart.style.fill="red"; }
+  else if(bpm<100){ statusDisplay.textContent="القياس جيد"; heart.style.fill="lime"; }
+  else { statusDisplay.textContent="نبض مرتفع! راقب نفسك"; heart.style.fill="orange"; }
+
+  let scale=1+Math.sin(Date.now()/1000*bpm/60)*0.2;
+  heart.style.transform=`scale(${scale})`;
+
+  const now=new Date(); const timeStr=now.getFullYear()+"-"+(now.getMonth()+1)+"-"+now.getDate()+" "+now.getHours()+":"+now.getMinutes()+":"+now.getSeconds();
+  dailyHistory.push({time:timeStr,bpm:bpm.toFixed(1),rr:rr.toFixed(1),hrv:hrv.toFixed(1),status:statusDisplay.textContent});
+  updateHistory();
+}
+
+function updateHistory(){
+  historyList.innerHTML="";
+  dailyHistory.slice(-50).forEach(item=>{
+    const li=document.createElement('li');
+    li.textContent=`[${item.time}] BPM: ${item.bpm}, RR: ${item.rr}, HRV: ${item.hrv}, الحالة: ${item.status}`;
+    historyList.appendChild(li);
+  });
+}
+
+startBtn.addEventListener('click',startMeasurement);
+</script>
+
+</body>
+</html>
